@@ -1,1 +1,33 @@
 /.ignore
+plan.md
+
+# Runtime output
+/data/*.pcap
+/data/*.jsonl
+!/data/.gitkeep
+
+# Go
+/backend/bin/
+*.test
+coverage.out
+
+# Node / React
+node_modules/
+ui/dist/
+
+# Rust / ESP32
+target/
+firmware/**/target/
+
+# Julia
+analysis/Manifest.toml
+
+# Robot Framework
+tests/robot/output/
+*.log.html
+report.html
+output.xml
+log.html
+
+# OS
+.DS_Store

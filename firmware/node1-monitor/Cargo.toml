@@ -1,0 +1,22 @@
+[package]
+name = "node1-monitor"
+version.workspace = true
+edition.workspace = true
+
+# Node1: promiscuous packet monitor. Captures 802.11 frames, prepends a radiotap
+# header, and streams them as NDJSON `packet` events over UART to the PC (which
+# writes the PCAP). Built with the ESP-IDF toolchain — see firmware/README.md.
+[[bin]]
+name = "node1-monitor"
+harness = false
+
+[dependencies]
+common = { path = "../common" }
+esp-idf-svc = { workspace = true }
+esp-idf-hal = { workspace = true }
+esp-idf-sys = { workspace = true }
+log = { workspace = true }
+heapless = { workspace = true }
+
+[build-dependencies]
+embuild = "0.32"

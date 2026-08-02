@@ -1,0 +1,13 @@
+[package]
+name = "common"
+version.workspace = true
+edition.workspace = true
+
+# The `common` crate holds pure logic (802.11 parsing, deauth detection, channel
+# hopping, radiotap header building, NDJSON framing) with no hardware dependency,
+# so it builds and unit-tests on the host in ordinary CI.
+[dependencies]
+heapless = { workspace = true }
+
+[features]
+default = []

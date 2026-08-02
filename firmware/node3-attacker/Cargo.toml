@@ -1,0 +1,23 @@
+[package]
+name = "node3-attacker"
+version.workspace = true
+edition.workspace = true
+
+# Node3: LAB attack tester. Raw 802.11 TX (esp_wifi_80211_tx) for deauth/beacon
+# tests against YOUR OWN network only. A firmware-side safety gate mirrors the
+# backend gate: TX is refused unless the target BSSID is on the compiled-in
+# allowlist and the command carries confirm_own_net. Off by default.
+[[bin]]
+name = "node3-attacker"
+harness = false
+
+[dependencies]
+common = { path = "../common" }
+esp-idf-svc = { workspace = true }
+esp-idf-hal = { workspace = true }
+esp-idf-sys = { workspace = true }
+log = { workspace = true }
+heapless = { workspace = true }
+
+[build-dependencies]
+embuild = "0.32"

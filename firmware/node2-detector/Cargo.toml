@@ -1,0 +1,22 @@
+[package]
+name = "node2-detector"
+version.workspace = true
+edition.workspace = true
+
+# Node2: deauth/disassoc detector. Promiscuous RX filtered to management frames,
+# sliding-window per-BSSID counting (common::detector). Alerts stream to the PC
+# over an inbound WebSocket the node dials into the Go agent.
+[[bin]]
+name = "node2-detector"
+harness = false
+
+[dependencies]
+common = { path = "../common" }
+esp-idf-svc = { workspace = true }
+esp-idf-hal = { workspace = true }
+esp-idf-sys = { workspace = true }
+log = { workspace = true }
+heapless = { workspace = true }
+
+[build-dependencies]
+embuild = "0.32"

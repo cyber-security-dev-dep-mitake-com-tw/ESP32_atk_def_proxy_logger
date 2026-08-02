@@ -1,0 +1,38 @@
+# Cargo workspace for the three ESP32 node firmwares plus a shared `common` crate.
+#
+# These target the ESP32 via the ESP-IDF framework (esp-idf-svc / esp-idf-hal),
+# which exposes the promiscuous-mode WiFi API (esp_wifi_set_promiscuous_rx_cb) and
+# raw 802.11 TX (esp_wifi_80211_tx) needed by the detector and attacker nodes.
+#
+# Build per node (requires the esp toolchain — see firmware/README.md):
+#   cd firmware/node1-monitor && cargo build --release
+[workspace]
+resolver = "2"
+members = [
+    "common",
+    "node1-monitor",
+    "node2-detector",
+    "node3-attacker",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Dennis Lee"]
+license = "MIT"
+
+[workspace.dependencies]
+esp-idf-svc = { version = "0.49", default-features = false }
+esp-idf-hal = "0.44"
+esp-idf-sys = "0.35"
+log = "0.4"
+heapless = "0.8"
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde-json-core = "0.5"
+
+[profile.release]
+opt-level = "s"
+
+[profile.dev]
+debug = true
+opt-level = "z"
