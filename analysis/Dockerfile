@@ -4,11 +4,12 @@
 FROM julia:1.10-bookworm
 WORKDIR /app
 
-# Instantiate deps first so they are cached and precompiled into the image layer.
+# Project.toml declares ESP32Analysis as a package, so its source must be present
+# before precompiling. Copy the manifest + source together, then instantiate.
 COPY Project.toml ./
+COPY src ./src
 RUN julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
-COPY src ./src
 COPY test ./test
 COPY run_report.jl watch_report.jl ./
 
