@@ -1,0 +1,72 @@
+# Orchestrates the three PC-side services (backend, UI, analysis) on one network
+# so ESP32 firmware nodes and the Robot test runner can all reach the backend.
+#
+#   docker compose up backend ui            # run the stack (browser: http://localhost:8088)
+#   docker compose run --rm analysis julia --project=. run_report.jl /data/events.jsonl
+#   docker compose --profile test run --rm robot   # run E2E tests against the backend
+#
+# Firmware nodes:
+#   - Node2/Node3 (WiFi): dial ws://<this-host-LAN-IP>:8080/ws/node/node2 (resp. node3),
+#     reachable because the backend port is published below.
+#   - Node1 (USB serial): uncomment the `devices` + command overrides on `backend`
+#     to pass the serial adapter into the container.
+
+services:
+  backend:
+    build:
+      context: ./backend
+    image: esp32-agent:latest
+    ports:
+      - "8080:8080"          # REST + WebSocket, reachable by WiFi nodes on the LAN
+    volumes:
+      - capture-data:/data
+    # Default command (from the image) is demo mode. For real hardware, override:
+    # command: ["--addr", ":8080", "--data", "/data",
+    #           "--node1-serial", "/dev/ttyUSB0", "--baud", "921600",
+    #           "--own-bssids", "AA:BB:CC:DD:EE:FF"]
+    # devices:
+    #   - "/dev/ttyUSB0:/dev/ttyUSB0"   # Node1 serial passthrough
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+    image: esp32-ui:latest
+    ports:
+      - "8088:80"            # browser UI; nginx proxies /api + /ws to backend
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  analysis:
+    build:
+      context: ./analysis
+    image: esp32-analysis:latest
+    volumes:
+      - capture-data:/data
+    environment:
+      EVENTS_FILE: /data/events.jsonl
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  robot:
+    build:
+      context: ./tests/robot
+    image: esp32-robot:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./tests/robot/output:/tests/output
+    profiles: ["test"]       # only runs with `--profile test`
+
+volumes:
+  capture-data:

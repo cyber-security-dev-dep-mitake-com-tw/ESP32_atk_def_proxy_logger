@@ -47,6 +47,35 @@ cd ui && npm install && npm run dev   # http://localhost:5173
 cd analysis && julia --project=. run_report.jl ../data/events.jsonl
 ```
 
+## Docker
+
+The three PC-side services are containerized and wired together with Compose:
+
+```bash
+docker compose up backend ui          # backend :8080, UI at http://localhost:8088
+docker compose --profile test run --rm robot   # E2E tests against the backend container
+docker compose run --rm analysis \
+  julia --project=. run_report.jl /data/events.jsonl   # one-shot report
+```
+
+| Service    | Image           | Port | Role |
+|------------|-----------------|------|------|
+| `backend`  | Go agent        | 8080 | REST/WS control API, PCAP + event store (shared `capture-data` volume) |
+| `ui`       | nginx + React   | 8088 | dashboard; nginx proxies `/api` and `/ws` to `backend` |
+| `analysis` | Julia           | —    | watches the shared volume and re-reports as events arrive |
+| `robot`    | Robot Framework | —    | E2E suite; runs with `--profile test` against the running backend |
+
+**How the other pieces reach the containers:**
+- **Firmware Node2 / Node3 (WiFi)** dial `ws://<docker-host-LAN-IP>:8080/ws/node/node2`
+  (resp. `node3`) — the backend port is published to the host, so nodes on the same
+  network connect straight in.
+- **Firmware Node1 (USB serial)** needs the adapter passed into the container:
+  uncomment the `devices:` and `command:` overrides on the `backend` service in
+  `docker-compose.yml` (e.g. `/dev/ttyUSB0`).
+- **Robot Framework** runs either on the host (spawning its own agent) or as the
+  `robot` container, which reaches the backend over the compose network at
+  `http://backend:8080` (`START_AGENT:False`).
+
 ## With real hardware
 
 ```bash

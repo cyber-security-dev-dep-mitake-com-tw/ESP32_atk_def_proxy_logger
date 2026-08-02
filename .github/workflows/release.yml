@@ -7,8 +7,40 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
+  docker-images:
+    name: Publish ${{ matrix.service }} image to GHCR
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { service: backend,  context: ./backend }
+          - { service: ui,       context: ./ui }
+          - { service: analysis, context: ./analysis }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.service }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.ref_name }}
+
   build-agent:
     name: Build agent (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest

@@ -113,3 +113,32 @@ jobs:
         with:
           name: robot-report
           path: tests/robot/output
+
+  docker:
+    name: Docker images + compose E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        run: docker compose config --quiet
+      - name: Build all images
+        run: docker compose build backend ui analysis robot
+      - name: Start backend + UI
+        run: docker compose up -d backend ui
+      - name: Wait for backend health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/api/health; then echo ok; exit 0; fi
+            sleep 2
+          done
+          echo "backend did not become healthy"; docker compose logs backend; exit 1
+      - name: Run Robot E2E against the container
+        run: docker compose --profile test run --rm robot
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: robot-report-docker
+          path: tests/robot/output
