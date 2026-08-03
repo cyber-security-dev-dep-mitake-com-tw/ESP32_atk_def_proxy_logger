@@ -12,11 +12,8 @@ harness = false
 
 [dependencies]
 common = { path = "../common" }
-esp-idf-svc = { workspace = true }
-esp-idf-hal = { workspace = true }
-esp-idf-sys = { workspace = true }
+esp-idf-svc = { workspace = true, features = ["binstart"] }
 log = { workspace = true }
-heapless = { workspace = true }
 
 [build-dependencies]
-embuild = "0.32"
+embuild = { version = "0.32", features = ["espidf"] }

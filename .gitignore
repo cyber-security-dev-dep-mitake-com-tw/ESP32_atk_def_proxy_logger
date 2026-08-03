@@ -31,3 +31,4 @@ log.html
 
 # OS
 .DS_Store
+/firmware/.embuild

@@ -21,10 +21,13 @@ edition = "2021"
 authors = ["Dennis Lee"]
 license = "MIT"
 
+# esp-idf-svc re-exports ::hal (esp-idf-hal) and ::sys (esp-idf-sys), so the node
+# crates depend only on esp-idf-svc and inherit a matching hal/sys — avoiding a
+# `links = "esp-idf"` version collision. 0.51 uses portable core::ffi::c_char, which
+# fixes the u8/i8 bindings mismatch on the 2025 esp/clang toolchain. Default features
+# (incl. std) stay on.
 [workspace.dependencies]
-esp-idf-svc = { version = "0.49", default-features = false }
-esp-idf-hal = "0.44"
-esp-idf-sys = "0.35"
+esp-idf-svc = "0.51"
 log = "0.4"
 heapless = "0.8"
 serde = { version = "1", default-features = false, features = ["derive"] }
