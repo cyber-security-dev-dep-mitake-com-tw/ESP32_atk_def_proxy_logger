@@ -1,0 +1,21 @@
+# Build config for Node1 on an ESP32-S3 dev board (Xtensa) with native USB.
+# The `esp` Rust toolchain (rust-toolchain.toml) provides the Xtensa target.
+[build]
+target = "xtensa-esp32s3-espidf"
+
+[target.xtensa-esp32s3-espidf]
+linker = "ldproxy"
+# Flash + open a serial monitor over the board's native USB CDC.
+runner = "espflash flash --monitor"
+rustflags = ["--cfg", "espidf_time64"]
+
+[unstable]
+build-std = ["std", "panic_abort"]
+
+[env]
+MCU = "esp32s3"
+# ESP-IDF version esp-idf-svc 0.51 is built against. embuild fetches it on first build.
+ESP_IDF_VERSION = "v5.2.3"
+# Point esp-idf-sys at the sdkconfig.defaults so our console (USB Serial/JTAG)
+# settings are applied. Absolute path avoids workspace/crate base-dir ambiguity.
+ESP_IDF_SDKCONFIG_DEFAULTS = "/Users/dennis_leedennis_lee/Documents/GitHub/ESP32_atk_def_proxy_logger/firmware/sdkconfig.defaults"

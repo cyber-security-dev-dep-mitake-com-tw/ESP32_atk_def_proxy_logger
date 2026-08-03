@@ -4,8 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 # Node2: deauth/disassoc detector. Promiscuous RX filtered to management frames,
-# sliding-window per-BSSID counting (common::detector). Alerts stream to the PC
-# over an inbound WebSocket the node dials into the Go agent.
+# sliding-window per-BSSID counting (common::detector). Alerts stream to the PC as
+# NDJSON over the native USB serial. A blue WS2812 LED blink identifies this node.
 [[bin]]
 name = "node2-detector"
 harness = false
@@ -13,7 +13,13 @@ harness = false
 [dependencies]
 common = { path = "../common" }
 esp-idf-svc = { workspace = true, features = ["binstart"] }
+# The classic RMT driver (TxRmtDriver/FixedLengthSignal) used to bit-bang the WS2812
+# RGB LED is gated behind rmt-legacy on ESP-IDF 5.x. Same 0.45 version esp-idf-svc
+# pulls, so features just unify (no links collision).
+esp-idf-hal = { version = "0.45", features = ["rmt-legacy"] }
 log = { workspace = true }
+anyhow = "1"
+serde_json = "1"
 
 [build-dependencies]
 embuild = { version = "0.32", features = ["espidf"] }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build and flash Node1 to the connected ESP32-S3, then hand the serial port to the
+# Build and flash Node2 to the connected ESP32-S3, then hand the serial port to the
 # Go agent so captured frames land in a PCAP.
 #
 # Usage:
-#   ./firmware/flash-node1.sh [DOWNLOAD_MODE_PORT]
+#   ./firmware/flash-node2.sh [DOWNLOAD_MODE_PORT]
 #
 # This S3 board exposes only its native USB, which does NOT auto-reset into the ROM
 # bootloader, so you enter download mode by hand. In download mode the ROM presents a
@@ -18,9 +18,9 @@ OVERRIDE_PORT="${1:-}"
 # shellcheck disable=SC1090
 source "$HOME/export-esp.sh"
 
-cd "$REPO_ROOT/firmware/node1-monitor"
+cd "$REPO_ROOT/firmware/node2-detector"
 cargo build --release
-BIN="$REPO_ROOT/firmware/target/xtensa-esp32s3-espidf/release/node1-monitor"
+BIN="$REPO_ROOT/firmware/target/xtensa-esp32s3-espidf/release/node2-detector"
 
 cat <<'MSG'
 
@@ -58,5 +58,5 @@ APP_PORT="$(ls /dev/cu.usbmodem* 2>/dev/null | grep -v "$(basename "$PORT")" | h
 APP_PORT="${APP_PORT:-<your /dev/cu.usbmodem* port>}"
 
 echo
-echo "Flashed + reset. Node1 is now capturing. Record PCAP with the agent:"
-echo "  cd $REPO_ROOT/backend && go run ./cmd/agent --node1-serial $APP_PORT --baud 115200"
+echo "Flashed + reset. Node2 is now capturing. Record PCAP with the agent:"
+echo "  cd $REPO_ROOT/backend && go run ./cmd/agent --node2-serial $APP_PORT --baud 115200"

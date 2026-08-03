@@ -974,20 +974,26 @@ dependencies = [
 name = "node2-detector"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "common",
  "embuild 0.32.0",
+ "esp-idf-hal",
  "esp-idf-svc",
  "log",
+ "serde_json",
 ]
 
 [[package]]
 name = "node3-attacker"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "common",
  "embuild 0.32.0",
+ "esp-idf-hal",
  "esp-idf-svc",
  "log",
+ "serde_json",
 ]
 
 [[package]]

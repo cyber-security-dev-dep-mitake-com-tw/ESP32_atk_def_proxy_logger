@@ -32,3 +32,6 @@ log.html
 # OS
 .DS_Store
 /firmware/.embuild
+
+# Node3 WiFi credentials (do not commit)
+firmware/node3-attacker/.wifi.env

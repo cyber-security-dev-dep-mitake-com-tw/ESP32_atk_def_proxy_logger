@@ -3,10 +3,11 @@ name = "node3-attacker"
 version.workspace = true
 edition.workspace = true
 
-# Node3: LAB attack tester. Raw 802.11 TX (esp_wifi_80211_tx) for deauth/beacon
-# tests against YOUR OWN network only. A firmware-side safety gate mirrors the
-# backend gate: TX is refused unless the target BSSID is on the compiled-in
-# allowlist and the command carries confirm_own_net. Off by default.
+# Node3: LAB attack tester (OWN NETWORK ONLY). Joins WiFi as a station, dials the
+# backend over a WebSocket, and injects raw 802.11 deauth frames against an
+# operator-allowlisted own-AP BSSID. A green WS2812 LED identifies this node. Off
+# by default; every TX is gated by the compiled-in OWN_BSSID allowlist AND the
+# backend safety gate. See ../../SAFETY.md.
 [[bin]]
 name = "node3-attacker"
 harness = false
@@ -14,7 +15,17 @@ harness = false
 [dependencies]
 common = { path = "../common" }
 esp-idf-svc = { workspace = true, features = ["binstart"] }
+# rmt-legacy: WS2812 LED driver (see node2). Same version esp-idf-svc pulls.
+esp-idf-hal = { version = "0.45", features = ["rmt-legacy"] }
 log = { workspace = true }
+anyhow = "1"
+serde_json = "1"
 
 [build-dependencies]
 embuild = { version = "0.32", features = ["espidf"] }
+
+# Pull the ESP-IDF WebSocket client managed component so esp-idf-svc's ws::client
+# (EspWebSocketClient) is compiled in. esp-idf-sys already has the bindings header
+# gated on this component being enabled.
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp_websocket_client", version = "1.2.0" }

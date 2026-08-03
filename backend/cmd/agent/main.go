@@ -29,8 +29,9 @@ func main() {
 	var (
 		addr       = flag.String("addr", ":8080", "HTTP listen address")
 		dataDir    = flag.String("data", "./data", "directory for pcap + event logs")
-		serialPort = flag.String("node1-serial", "", "serial device for Node1 (e.g. /dev/tty.usbserial-0001); empty to skip")
-		baud       = flag.Int("baud", 921600, "Node1 serial baud rate")
+		serialPort  = flag.String("node1-serial", "", "serial device for Node1 (e.g. /dev/tty.usbserial-0001); empty to skip")
+		node2Serial = flag.String("node2-serial", "", "serial device for Node2 deauth detector; empty to skip")
+		baud        = flag.Int("baud", 921600, "serial baud rate for serial-connected nodes")
 		ownBSSIDs  = flag.String("own-bssids", "", "comma-separated allowlist of your own BSSIDs for Node3 attacks")
 		demo       = flag.Bool("demo", false, "run with synthetic nodes (no hardware)")
 	)
@@ -68,13 +69,23 @@ func main() {
 	if *demo {
 		log.Println("running in DEMO mode with synthetic nodes")
 		api.StartDemo(ctx, hub)
-	} else if *serialPort != "" {
-		node, err := transport.OpenSerial("node1", *serialPort, *baud)
-		if err != nil {
-			log.Fatalf("open node1 serial: %v", err)
+	} else {
+		if *serialPort != "" {
+			node, err := transport.OpenSerial("node1", *serialPort, *baud)
+			if err != nil {
+				log.Fatalf("open node1 serial: %v", err)
+			}
+			hub.AddNode(node)
+			log.Printf("Node1 connected on %s @ %d baud", *serialPort, *baud)
 		}
-		hub.AddNode(node)
-		log.Printf("Node1 connected on %s @ %d baud", *serialPort, *baud)
+		if *node2Serial != "" {
+			node, err := transport.OpenSerial("node2", *node2Serial, *baud)
+			if err != nil {
+				log.Fatalf("open node2 serial: %v", err)
+			}
+			hub.AddNode(node)
+			log.Printf("Node2 connected on %s @ %d baud", *node2Serial, *baud)
+		}
 	}
 
 	srv := &http.Server{Addr: *addr, Handler: api.NewServer(hub).Handler()}
