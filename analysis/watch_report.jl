@@ -9,6 +9,7 @@ using .ESP32Analysis
 # ambiguous and throws UndefVarError.
 function watch(path::AbstractString, interval::Float64)
     println("watching ", path, " every ", interval, "s")
+    flush(stdout)
     last_size = -1
     while true
         if isfile(path)
@@ -18,6 +19,7 @@ function watch(path::AbstractString, interval::Float64)
                 try
                     println("\n" * "="^60)
                     print(report(path))
+                    flush(stdout)
                 catch err
                     @warn "report failed" error = err
                 end
