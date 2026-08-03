@@ -24,6 +24,12 @@ func OpenSerial(id, name string, baud int) (*SerialNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// On the ESP32-S3 USB Serial/JTAG, DTR is wired to GPIO0 (BOOT) and RTS to EN
+	// (reset). Hold BOTH low so opening the port neither pulls the board into
+	// download mode (GPIO0 low at reset) nor pulses a reset — the running app keeps
+	// streaming to the console. Harmless on plain UART bridges.
+	_ = port.SetDTR(false)
+	_ = port.SetRTS(false)
 	return NewSerialNode(id, port), nil
 }
 

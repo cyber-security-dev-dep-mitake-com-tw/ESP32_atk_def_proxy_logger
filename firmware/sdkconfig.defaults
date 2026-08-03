@@ -1,0 +1,11 @@
+# ESP-IDF config applied to the node firmwares. esp-idf-sys reads this file from the
+# workspace root (this directory) by default.
+
+# Route the primary console — stdout (our NDJSON packet stream) AND stdin (commands)
+# — over the chip's built-in USB Serial/JTAG, which is what enumerates as
+# /dev/cu.usbmodem* on the PC. Without this the console defaults to the UART0 pins
+# and nothing reaches the USB port.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Roomier main task stack for WiFi init + the capture/format pipeline.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=10000
