@@ -114,3 +114,46 @@ CI runs all of the above on every push (`.github/workflows/ci.yml`); tagging
 | GET    | `/ws/node/{id}`              | WebSocket: node dial-in (ESP32) |
 
 See [SAFETY.md](SAFETY.md) before enabling Node3.
+
+---
+一套 三節點 ESP32 WiFi 攻防／監控實驗台：板端抓包／偵測／（受限）攻擊，PC 端用 Go agent 匯流，瀏覽器儀表板控制與觀察，Julia 做離線分析。
+
+架構
+```text
+Node1 (USB serial) ──►┐
+Node2 (WiFi WS)    ──►┼── Go agent (:8080) ── REST/WS ──► React UI (:8088)
+Node3 (WiFi WS)    ──►┘         │
+                                ├─ data/*.pcap
+                                └─ data/events.jsonl ──► Julia analysis
+```
+三個節點
+節點	角色	連線	現況
+Node1
+Promiscuous 抓 802.11 → PCAP／封包串流
+USB serial（macOS 需 host agent）
+UI上已連上：ch6、RSSI、pps
+Node2
+Deauth 偵測 → deauth_alert
+WiFi WebSocket
+已連上；藍燈
+Node3
+對 allowlist BSSID 打 deauth（雙重閘門）
+WiFi WebSocket
+已連上；綠燈；Lab console
+PC 端已實現
+Go agent：節點註冊、指令下發、事件 JSONL、Node1 PCAP、SafetyGate（lab mode + confirm + --own-bssids）
+React UI：節點狀態、封包 monitor、deauth 警報／加總、Capture report（channel／RSSI／deauth）、攻擊控制台
+Julia analysis：監看 events.jsonl，輸出與 UI Capture report 同類指標
+Docker Compose：backend／UI／analysis；macOS 的 Node1 用 ./scripts/run-host-agent.sh（Docker 看不到 USB）
+安全文件：SAFETY.md（僅自有網路、雙層 allowlist）
+
+端到端已驗證過的閉環
+Node1 有線抓包 → UI 顯示 ch／RSSI／pps
+Node3 在 lab mode 對 90:3a:72:4d:0e:58 送 deauth
+Node2 偵測並寫入 events／analysis
+後端拒絕不在 allowlist／未確認的攻擊
+刻意未做／限制
+Node1 尚未改成純 WiFi（仍靠 USB；macOS 必須 host agent）
+Node2 連上 AP 後預設不 hop channel（hop 會斷 WS）
+攻擊僅限自有網路實驗，非法用途不在範圍內
+簡言之：這是可操作的 WiFi 監控 + deauth 偵測 + 門控攻擊實驗 全棧，不是單一 firmware demo。
