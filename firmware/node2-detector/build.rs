@@ -1,4 +1,7 @@
-// ESP-IDF build integration. Runs the C/IDF build and links it into the Rust binary.
+// ESP-IDF build integration + rebuild when compile-time WiFi/WS config changes.
 fn main() {
+    for k in ["WIFI_SSID", "WIFI_PASSWORD", "WS_URL"] {
+        println!("cargo:rerun-if-env-changed={k}");
+    }
     embuild::espidf::sysenv::output();
 }

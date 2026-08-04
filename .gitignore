@@ -33,8 +33,9 @@ log.html
 .DS_Store
 /firmware/.embuild
 
-# Node3 WiFi credentials (do not commit)
+# Node WiFi credentials (do not commit)
 firmware/node3-attacker/.wifi.env
+firmware/node2-detector/.wifi.env
 
 # Compose real-backend config
 /.env

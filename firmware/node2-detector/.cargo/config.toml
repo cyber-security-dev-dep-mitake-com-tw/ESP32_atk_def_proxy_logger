@@ -14,6 +14,9 @@ build-std = ["std", "panic_abort"]
 
 [env]
 MCU = "esp32s3"
+# Virtual workspace has no root package, so tell esp-idf-sys which crate's metadata
+# (extra_components = esp_websocket_client) to read.
+ESP_IDF_SYS_ROOT_CRATE = "node2-detector"
 # ESP-IDF version esp-idf-svc 0.51 is built against. embuild fetches it on first build.
 ESP_IDF_VERSION = "v5.2.3"
 # Point esp-idf-sys at the sdkconfig.defaults so our console (USB Serial/JTAG)

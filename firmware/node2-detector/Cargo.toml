@@ -3,9 +3,9 @@ name = "node2-detector"
 version.workspace = true
 edition.workspace = true
 
-# Node2: deauth/disassoc detector. Promiscuous RX filtered to management frames,
-# sliding-window per-BSSID counting (common::detector). Alerts stream to the PC as
-# NDJSON over the native USB serial. A blue WS2812 LED blink identifies this node.
+# Node2: deauth/disassoc detector over WiFi. Joins the lab network as a station,
+# dials the backend WebSocket, runs promiscuous RX (mgmt frames) on the AP channel,
+# and streams deauth_alert NDJSON events wirelessly. Blue WS2812 LED identifies it.
 [[bin]]
 name = "node2-detector"
 harness = false
@@ -23,3 +23,7 @@ serde_json = "1"
 
 [build-dependencies]
 embuild = { version = "0.32", features = ["espidf"] }
+
+# Pull the ESP-IDF WebSocket client managed component (same as Node3).
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp_websocket_client", version = "1.2.0" }

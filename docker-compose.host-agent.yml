@@ -1,0 +1,7 @@
+# Optional overlay used by scripts/run-host-agent.sh so the UI nginx upstream
+# named "backend" resolves to the Mac host (where the Go agent + Node1 serial run).
+# Do not enable this while the containerized backend is also running on :8080.
+services:
+  ui:
+    extra_hosts:
+      - "backend:host-gateway"

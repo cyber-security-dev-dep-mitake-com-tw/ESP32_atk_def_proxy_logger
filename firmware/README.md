@@ -10,7 +10,7 @@ no UART bridge). Hardware seen in this project:
 | Node  | Role                        | Transport        | Identify LED | Board MAC            |
 |-------|-----------------------------|------------------|--------------|---------------------|
 | Node1 | Packet monitor + PCAP       | USB serial       | —            | `14:c1:9f:cb:51:b4` |
-| Node2 | Deauth detector + alert     | USB serial       | **blue** blink | `14:c1:9f:26:36:00` |
+| Node2 | Deauth detector + alert     | **WiFi WebSocket** | **blue** blink | `14:c1:9f:26:36:00` |
 | Node3 | Lab attacker (own net only) | **WiFi WebSocket** | **green** blink | `e8:3d:c1:f1:4b:c0` |
 
 ## Layout
@@ -21,7 +21,8 @@ no UART bridge). Hardware seen in this project:
   - `hopper` — channel hopping
   - `radiotap` — radiotap header builder for PCAP
 - `node1-monitor/` — promiscuous packet monitor → radiotap+base64 NDJSON over USB serial
-- `node2-detector/` — deauth detector → `deauth_alert` NDJSON over USB serial; blue WS2812 LED
+- `node2-detector/` — WiFi-STA + WebSocket client, promiscuous deauth detector →
+  `deauth_alert` NDJSON over WS; blue WS2812 LED
 - `node3-attacker/` — WiFi-STA + WebSocket client, deauth injection, green WS2812 LED
   (own-network only; see [../SAFETY.md](../SAFETY.md))
 
@@ -75,20 +76,32 @@ Helper scripts handle build + flash per node:
   The Go agent opens the port with **both held low** (`SetDTR(false)`/`SetRTS(false)`)
   so opening it neither resets the board nor forces download mode.
 
-## Node1 / Node2 — USB serial
+## Node1 — USB serial
 
 ```bash
 # Node1 packet monitor → PCAP in data/
-cd ../backend && go run ./cmd/agent --node1-serial /dev/cu.usbmodem1101 --baud 115200
-
-# Node2 deauth detector (blue LED heartbeat, deauth_alert on attack)
-go run ./cmd/agent --node2-serial /dev/cu.usbmodem1101
+cd ../backend && go run ./cmd/agent --node1-serial /dev/cu.usbmodem1101 --baud 115200 \
+  --own-bssids "AA:BB:CC:DD:EE:FF"
 ```
 
-> **Two boards, one port**: Node1 and Node2 both present the *same* USB-Serial/JTAG
-> identity, so only one `/dev/cu.usbmodem1101` appears at a time. Run them one at a
-> time, or re-plug so each re-enumerates before using `--node1-serial` +
-> `--node2-serial` together.
+Node1 still needs USB for high-rate promiscuous capture → PCAP. Node2/Node3 dial
+inbound WebSocket after flash and can run untethered.
+
+## Node2 — WiFi WebSocket + deauth detector
+
+Node2 joins your WiFi as a station, dials the backend, enables promiscuous RX on
+the **associated AP channel**, and streams `deauth_alert` events over WebSocket.
+Blue LED heartbeat; bright flash on each alert.
+
+```bash
+cp node2-detector/.wifi.env.example node2-detector/.wifi.env
+# edit: WIFI_SSID, WIFI_PASSWORD, WS_URL=ws://<PC-LAN-IP>:8080/ws/node/node2
+./flash-node2.sh
+# Watch: curl -s localhost:8080/api/nodes
+```
+
+Stay on the AP channel by default — `start_hop` / `set_channel` can drop the STA
+link (and the WebSocket) until Node2 reconnects.
 
 ## Node3 — WiFi WebSocket + deauth injection (OWN NETWORK ONLY)
 

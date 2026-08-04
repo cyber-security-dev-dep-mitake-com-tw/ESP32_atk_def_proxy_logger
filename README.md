@@ -6,7 +6,7 @@ screen — all UI lives in the browser or terminal.
 | Node  | Role                              | Transport        | Status |
 |-------|----------------------------------|------------------|--------|
 | Node1 | Packet Monitor + PCAP record     | USB serial (UART)| passive |
-| Node2 | Deauth detector + alert          | WiFi WebSocket   | passive |
+| Node2 | Deauth detector + alert          | WiFi WebSocket   | passive (STA + promiscuous on AP channel) |
 | Node3 | Lab attack tester (own net only) | WiFi WebSocket   | **gated, off by default** — see [SAFETY.md](SAFETY.md) |
 
 ## Architecture

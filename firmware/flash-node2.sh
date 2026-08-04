@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
-# Build and flash Node2 to the connected ESP32-S3, then hand the serial port to the
-# Go agent so captured frames land in a PCAP.
+# Build and flash Node2 (WiFi deauth detector) to the connected ESP32-S3.
+# WiFi credentials + backend WS URL are baked in from .wifi.env at build time.
 #
 # Usage:
-#   ./firmware/flash-node2.sh [DOWNLOAD_MODE_PORT]
+#   1. cp firmware/node2-detector/.wifi.env.example firmware/node2-detector/.wifi.env
+#   2. edit .wifi.env  (WIFI_SSID, WIFI_PASSWORD, WS_URL → .../ws/node/node2)
+#   3. ./firmware/flash-node2.sh [SERIAL_PORT]
 #
-# This S3 board exposes only its native USB, which does NOT auto-reset into the ROM
-# bootloader, so you enter download mode by hand. In download mode the ROM presents a
-# DIFFERENT serial device (e.g. /dev/cu.usbmodem1101) than the running app's console
-# (/dev/cu.usbmodem<chip-id>) — so the port is detected AFTER you enter download mode.
+# After flashing, Node2 runs over WiFi — it dials the backend WS itself, no USB
+# needed. Start the backend first:
+#   docker compose up -d backend   # or: go run ./cmd/agent --own-bssids ...
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OVERRIDE_PORT="${1:-}"
+ENV_FILE="$REPO_ROOT/firmware/node2-detector/.wifi.env"
 
-# esp Rust toolchain env.
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Missing $ENV_FILE" >&2
+  echo "Copy .wifi.env.example to .wifi.env and fill in your WiFi + WS_URL." >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+: "${WIFI_SSID:?set WIFI_SSID in .wifi.env}"
+: "${WS_URL:?set WS_URL in .wifi.env}"
+export WIFI_SSID WIFI_PASSWORD WS_URL
+echo "Building Node2 for SSID='$WIFI_SSID'"
+echo "Backend WS: $WS_URL"
+
 # shellcheck disable=SC1090
 source "$HOME/export-esp.sh"
 
@@ -22,41 +35,16 @@ cd "$REPO_ROOT/firmware/node2-detector"
 cargo build --release
 BIN="$REPO_ROOT/firmware/target/xtensa-esp32s3-espidf/release/node2-detector"
 
-cat <<'MSG'
-
-  >>> Put the board in DOWNLOAD MODE now:
-        1. Press and HOLD the BOOT button
-        2. Briefly press and release RESET (may be labelled EN)
-        3. Release BOOT
-      Then press Enter here to flash.
-
-MSG
-read -r _
-
-# Detect the download-mode port now (it appears when the ROM bootloader enumerates).
-if [[ -n "$OVERRIDE_PORT" ]]; then
-  PORT="$OVERRIDE_PORT"
-else
-  PORT="$(ls -t /dev/cu.usbmodem* 2>/dev/null | head -n1 || true)"
-fi
+PORT="${1:-$(ls /dev/cu.usbmodem* 2>/dev/null | head -n1 || true)}"
 if [[ -z "$PORT" ]]; then
-  echo "No serial port found. Is the board in download mode?" >&2
+  echo "No /dev/cu.usbmodem* port found." >&2
+  echo "Put the board in download mode (hold BOOT, tap RESET, release BOOT) if needed." >&2
   exit 1
 fi
-echo "Flashing via download-mode port: $PORT"
-
-# --no-stub: flash straight from the ROM loader. The USB-Serial/JTAG re-enumerates
-# when a stub is uploaded, which breaks the connection mid-flash, so we skip it.
-# --before no-reset: the board is already in download mode.
-# --after hard-reset: boot the freshly-flashed app afterwards.
-espflash flash --before no-reset --after hard-reset --port "$PORT" "$BIN"
-
-# After the hard reset the app runs and its native-USB console re-enumerates under the
-# chip-id name. Find it so we can tell the user which port to give the agent.
-sleep 2
-APP_PORT="$(ls /dev/cu.usbmodem* 2>/dev/null | grep -v "$(basename "$PORT")" | head -n1 || true)"
-APP_PORT="${APP_PORT:-<your /dev/cu.usbmodem* port>}"
+echo "Flashing via $PORT"
+espflash flash --after hard-reset --port "$PORT" "$BIN"
 
 echo
-echo "Flashed + reset. Node2 is now capturing. Record PCAP with the agent:"
-echo "  cd $REPO_ROOT/backend && go run ./cmd/agent --node2-serial $APP_PORT --baud 115200"
+echo "Flashed. Node2 will join WiFi and dial the backend at $WS_URL."
+echo "Watch it appear:  curl -s localhost:8080/api/nodes"
+echo "Blue LED = Node2 identity (bright flash on each deauth alert)."

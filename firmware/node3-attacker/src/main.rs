@@ -121,10 +121,25 @@ fn main() -> anyhow::Result<()> {
         log::error!("no valid OWN_BSSID baked in — all attacks will be refused");
     }
 
-    // --- WebSocket client: dial the backend and receive attack commands ---
+    // --- Command queue (WS callback → worker) ---
     let (tx, rx) = mpsc::sync_channel::<AttackReq>(16);
     let _ = CMD_TX.set(Mutex::new(tx));
 
+    // Reconnect loop: deauth against our own AP often drops STA/WS; keep redialing.
+    loop {
+        if let Err(e) = run_ws_session(&mut led, &rx, own) {
+            log::warn!("websocket session ended: {e}");
+        }
+        blink_once(&mut led, 0, 60, 0, 150);
+        std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
+fn run_ws_session(
+    led: &mut TxRmtDriver<'_>,
+    rx: &mpsc::Receiver<AttackReq>,
+    own: Option<[u8; 6]>,
+) -> anyhow::Result<()> {
     let ws_config = EspWebSocketClientConfig::default();
     let mut client = EspWebSocketClient::new(
         WS_URL,
@@ -140,19 +155,30 @@ fn main() -> anyhow::Result<()> {
     )?;
     log::info!("websocket dialing {WS_URL}");
 
-    // --- Main worker: run attacks + drive the green LED ---
     let start = Instant::now();
     let mut led_on = false;
     let mut last_blink = 0u64;
     let mut flash_until = 0u64;
     let mut hello_sent = false;
+    let mut saw_connected = false;
+    let session_start = Instant::now();
 
     loop {
         let now_ms = start.elapsed().as_millis() as u64;
 
-        if !hello_sent && client.is_connected() {
-            let _ = client.send(FrameType::Text(false), b"{\"ev\":\"log\",\"level\":\"info\",\"msg\":\"node3 online\"}");
-            hello_sent = true;
+        if client.is_connected() {
+            saw_connected = true;
+            if !hello_sent {
+                let _ = client.send(
+                    FrameType::Text(false),
+                    b"{\"ev\":\"log\",\"level\":\"info\",\"msg\":\"node3 online\"}",
+                );
+                hello_sent = true;
+            }
+        } else if saw_connected {
+            anyhow::bail!("websocket disconnected");
+        } else if session_start.elapsed() > Duration::from_secs(15) {
+            anyhow::bail!("websocket connect timeout");
         }
 
         while let Ok(req) = rx.try_recv() {
@@ -174,14 +200,14 @@ fn main() -> anyhow::Result<()> {
 
         // Green LED: bright flash during an attack, else a gentle heartbeat.
         if now_ms < flash_until {
-            set_led(&mut led, 0, 255, 0); // full green
+            set_led(led, 0, 255, 0); // full green
         } else if now_ms.saturating_sub(last_blink) >= 500 {
             last_blink = now_ms;
             led_on = !led_on;
             if led_on {
-                set_led(&mut led, 0, 40, 0); // dim green
+                set_led(led, 0, 40, 0); // dim green
             } else {
-                set_led(&mut led, 0, 0, 0);
+                set_led(led, 0, 0, 0);
             }
         }
 

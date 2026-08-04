@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/alertfeed.tsx","./src/components/attackconsole.tsx","./src/components/nodegrid.tsx","./src/components/packetstream.tsx","./src/hooks/useevents.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/alertfeed.tsx","./src/components/attackconsole.tsx","./src/components/capturereport.tsx","./src/components/nodegrid.tsx","./src/components/packetstream.tsx","./src/hooks/useevents.ts"],"version":"5.9.3"}

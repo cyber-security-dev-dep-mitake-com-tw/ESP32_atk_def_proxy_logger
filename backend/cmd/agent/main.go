@@ -1,7 +1,8 @@
 // Command agent is the PC-side control backend for the ESP32 attack/defense/proxy
-// logger. It connects to the three nodes (Node1 over serial, Node2/Node3 over
-// inbound WebSocket), records Node1 traffic to PCAP, persists events to JSONL, and
-// serves a REST + WebSocket API for the React UI.
+// logger. It connects to the three nodes (Node1 over serial; Node2/Node3 dial in
+// over inbound WebSocket, with optional --node2-serial fallback), records Node1
+// traffic to PCAP, persists events to JSONL, and serves a REST + WebSocket API
+// for the React UI.
 package main
 
 import (
