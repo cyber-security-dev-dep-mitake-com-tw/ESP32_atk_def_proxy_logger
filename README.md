@@ -1,116 +1,214 @@
 # ESP32 Attack / Defense / Proxy Logger
 
-A **headless**, PC-controlled 3-node ESP32 WiFi security toolkit. No physical
-screen — all UI lives in the browser or terminal.
+Headless, PC-controlled **3-node ESP32 WiFi** toolkit. No on-device screen — control and observation live in the browser or terminal.
 
-| Node  | Role                              | Transport        | Status |
-|-------|----------------------------------|------------------|--------|
-| Node1 | Packet Monitor + PCAP record     | USB serial (UART)| passive |
-| Node2 | Deauth detector + alert          | WiFi WebSocket   | passive (STA + promiscuous on AP channel) |
-| Node3 | Lab attack tester (own net only) | WiFi WebSocket   | **gated, off by default** — see [SAFETY.md](SAFETY.md) |
+> **Safety:** Node3 can transmit deauth frames. Use **only on networks you own**. Read [SAFETY.md](SAFETY.md) before enabling lab mode.
+
+---
+
+## Table of contents
+
+- [Nodes](#nodes)
+- [Architecture](#architecture)
+- [Repository layout](#repository-layout)
+- [Quick start (demo, no hardware)](#quick-start-demo-no-hardware)
+- [Docker](#docker)
+- [Real hardware](#real-hardware)
+- [REST / WebSocket API](#rest--websocket-api)
+- [Testing](#testing)
+- [Related docs](#related-docs)
+
+---
+
+## Nodes
+
+| Node | Role | Transport | Mode |
+|------|------|-----------|------|
+| **Node1** | Packet monitor + PCAP | USB serial | Passiveive |
+| **Node2** | Deauth detector + alert | WiFi WebSocket | Passiveive (STA + promiscuous on AP channel) |
+| **Node3** | Lab attack tester | WiFi WebSocket | **Gated / off by default** — [SAFETY.md](SAFETY.md) |
+
+---
 
 ## Architecture
 
+```text
+ESP32 Node1 ──USB serial──┐
+ESP32 Node2 ──WiFi WS─────┼──► Go agent (:8080) ──REST/WS──► React UI
+ESP32 Node3 ──WiFi WS─────┘         │
+                                    ├─► data/*.pcap
+                                    └─► data/events.jsonl ──► Julia analysis
 ```
-ESP32 nodes ──serial/WS──►  Go agent  ──REST+WS──►  React UI (browser)
-                              │
-                              ├─► data/*.pcap   (Node1 frames via gopacket)
-                              └─► data/events.jsonl
-                                        │
-                                        └─►  Julia analysis  → reports/plots
-```
 
-All nodes speak one **NDJSON command/event protocol** (`backend/internal/proto`),
-identical over serial and WebSocket, so the backend treats every node uniformly.
+All nodes speak one **NDJSON** command/event protocol (`backend/internal/proto`) over serial or WebSocket, so the agent treats them uniformly.
 
-## Components
+---
 
-| Path        | Tech                        | What it is |
-|-------------|-----------------------------|------------|
-| `firmware/` | Rust (ESP-IDF) + host-tested `common` crate | Node firmwares; shared logic (802.11 parse, deauth detector, channel hopper, radiotap) |
-| `backend/`  | Go (`net/http`, gopacket, gorilla/websocket, go.bug.st/serial) | Control agent: node transports, PCAP writer, event store, REST/WS API |
-| `ui/`       | React + Vite + TypeScript   | Dashboard: node grid, packet stream, alert feed, gated attack console |
-| `analysis/` | Julia                       | Offline PCAP/event analysis (channel use, RSSI, deauth timelines) |
-| `tests/robot/` | Robot Framework          | End-to-end tests against the running agent |
+## Repository layout
 
-## Quick start (no hardware — demo mode)
+| Path | Stack | Purpose |
+|------|--------|---------|
+| [`firmware/`](firmware/) | Rust + ESP-IDF | Node firmwares; shared `common` crate (802.11 parse, detector, hopper, radiotap) |
+| [`backend/`](backend/) | Go | Agent: transports, PCAP, event store, REST + WS API, safety gate |
+| [`ui/`](ui/) | React + Vite + TS | Dashboard: nodes, packets, alerts, capture report, attack console |
+| [`analysis/`](analysis/) | Julia | Offline / live rollups (channel, RSSI, deauth by BSSID) |
+| [`tests/robot/`](tests/robot/) | Robot Framework | End-to-end tests against a running agent |
+| [`scripts/`](scripts/) | Bash | Host helpers (e.g. macOS Node1 USB agent) |
+
+---
+
+## Quick start (demo, no hardware)
 
 ```bash
-# 1. Backend with three synthetic nodes
-cd backend && go build -o bin/agent ./cmd/agent
+# 1) Backend with three synthetic nodes
+cd backend
+go build -o bin/agent ./cmd/agent
 ./bin/agent --demo --own-bssids "AA:BB:CC:DD:EE:FF"
 
-# 2. UI (separate terminal) — proxies to the agent on :8080
-cd ui && npm install && npm run dev   # http://localhost:5173
+# 2) UI (separate terminal) — proxies to :8080
+cd ui
+npm install
+npm run dev          # http://localhost:5173
 
-# 3. Analysis of captured events
-cd analysis && julia --project=. run_report.jl ../data/events.jsonl
+# 3) Analysis (optional)
+cd analysis
+julia --project=. run_report.jl ../data/events.jsonl
 ```
+
+---
 
 ## Docker
 
-The three PC-side services are containerized and wired together with Compose:
-
 ```bash
-docker compose up backend ui          # backend :8080, UI at http://localhost:8088
-docker compose --profile test run --rm robot   # E2E tests against the backend container
+# Core stack — API :8080, UI http://localhost:8088
+docker compose up backend ui
+
+# E2E tests
+docker compose --profile test run --rm robot
+
+# One-shot analysis report
 docker compose run --rm analysis \
-  julia --project=. run_report.jl /data/events.jsonl   # one-shot report
+  julia --project=. run_report.jl /data/events.jsonl
 ```
 
-| Service    | Image           | Port | Role |
-|------------|-----------------|------|------|
-| `backend`  | Go agent        | 8080 | REST/WS control API, PCAP + event store (shared `capture-data` volume) |
-| `ui`       | nginx + React   | 8088 | dashboard; nginx proxies `/api` and `/ws` to `backend` |
-| `analysis` | Julia           | —    | watches the shared volume and re-reports as events arrive |
-| `robot`    | Robot Framework | —    | E2E suite; runs with `--profile test` against the running backend |
+### Services
 
-**How the other pieces reach the containers:**
-- **Firmware Node2 / Node3 (WiFi)** dial `ws://<docker-host-LAN-IP>:8080/ws/node/node2`
-  (resp. `node3`) — the backend port is published to the host, so nodes on the same
-  network connect straight in.
-- **Firmware Node1 (USB serial)** needs the adapter passed into the container:
-  uncomment the `devices:` and `command:` overrides on the `backend` service in
-  `docker-compose.yml` (e.g. `/dev/ttyUSB0`).
-- **Robot Framework** runs either on the host (spawning its own agent) or as the
-  `robot` container, which reaches the backend over the compose network at
-  `http://backend:8080` (`START_AGENT:False`).
+| Service | Image role | Port | Notes |
+|---------|------------|------|--------|
+| `backend` | Go agent | **8080** | REST + WS; shared `capture-data` volume |
+| `ui` | nginx + React | **8088** | Proxies `/api` and `/ws` → `backend` |
+| `analysis` | Julia | — | Watches `/data/events.jsonl` |
+| `robot` | Robot Framework | — | Profile `test` only |
 
-## With real hardware
+### Reaching the stack
+
+| Client | How it connects |
+|--------|-----------------|
+| **Node2 / Node3** | `ws://<host-LAN-IP>:8080/ws/node/node2` (or `node3`) |
+| **Node1 (Linux Docker)** | Pass serial via `devices:` + `--node1-serial` in compose (see `docker-compose.yml` comments) |
+| **Node1 (macOS)** | Docker Desktop **cannot** see `/dev/cu.usbmodem*`. Use [`scripts/run-host-agent.sh`](scripts/run-host-agent.sh) |
+| **Robot (container)** | `http://backend:8080` with `START_AGENT:False` |
+
+#### Real Node3 allowlist under Compose
 
 ```bash
-# Node1 over serial (find the device with `ls /dev/tty.*` or `ls /dev/ttyUSB*`)
-./bin/agent --node1-serial /dev/tty.usbserial-0001 --baud 921600 \
-            --own-bssids "AA:BB:CC:DD:EE:FF"
+echo 'OWN_BSSID=90:3a:72:4d:0e:58' > .env   # your own AP BSSID (2.4 GHz)
+# docker-compose.override.yml (gitignored) should pass --own-bssids ${OWN_BSSID}
+docker compose up -d backend ui
 ```
 
-Node2 and Node3 connect outbound over WiFi to `ws://<agent-host>:8080/ws/node/<id>`.
-Flashing the firmware requires the esp Rust toolchain — see [firmware/README.md](firmware/README.md).
+---
+
+## Real hardware
+
+### 1. Flash firmware
+
+See [firmware/README.md](firmware/README.md).
+
+```bash
+./firmware/flash-node1.sh
+./firmware/flash-node2.sh   # needs firmware/node2-detector/.wifi.env
+./firmware/flash-node3.sh   # needs firmware/node3-attacker/.wifi.env
+```
+
+### 2. Run the agent
+
+**Linux / generic (serial Node1):**
+
+```bash
+cd backend
+./bin/agent \
+  --node1-serial /dev/ttyUSB0 \
+  --baud 115200 \
+  --own-bssids "AA:BB:CC:DD:EE:FF"
+```
+
+**macOS (Node1 USB + WiFi Node2/3):**
+
+```bash
+echo 'OWN_BSSID=AA:BB:CC:DD:EE:FF' > .env
+./scripts/run-host-agent.sh
+# UI: http://localhost:8088
+```
+
+Node2 / Node3 dial outbound:
+
+```text
+ws://<agent-host-LAN-IP>:8080/ws/node/node2
+ws://<agent-host-LAN-IP>:8080/ws/node/node3
+```
+
+### 3. Arm Node3 (own network only)
+
+```bash
+curl -s -X POST localhost:8080/api/safety/labmode \
+  -H 'Content-Type: application/json' \
+  -d '{"on":true}'
+
+curl -s -X POST localhost:8080/api/nodes/node3/command \
+  -H 'Content-Type: application/json' \
+  -d '{"cmd":"attack","type":"deauth","bssid":"AA:BB:CC:DD:EE:FF","confirm_own_net":true}'
+```
+
+Backend allowlist (`--own-bssids`) and firmware `OWN_BSSID` must both match the **Wi‑Fi BSSID** (not the Mac private Wi‑Fi address, and not always the router LAN MAC).
+
+---
+
+## REST / WebSocket API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/health` | Liveness |
+| `GET` | `/api/nodes` | Node statuses |
+| `POST` | `/api/nodes/{id}/command` | Send NDJSON command (safety-gated) |
+| `GET` | `/api/safety` | Lab mode + allowlist |
+| `POST` | `/api/safety/labmode` | Body: `{"on": true}` |
+| `GET` | `/api/events` | WebSocket — live events (browser) |
+| `GET` | `/ws/node/{id}` | WebSocket — ESP32 dial-in |
+
+---
 
 ## Testing
 
 ```bash
-cd backend  && go test -race ./...        # Go unit + API tests
-cd firmware && cargo test -p common       # firmware logic (host)
+cd backend  && go test -race ./...
+cd firmware && cargo test -p common
 cd analysis && julia --project=. test/runtests.jl
-# End-to-end (from repo root, agent binary must be built first):
+
+# E2E (agent binary built first)
 robot --outputdir tests/robot/output tests/robot/suites
 ```
 
-CI runs all of the above on every push (`.github/workflows/ci.yml`); tagging
-`vX.Y.Z` builds cross-platform agent binaries and a UI bundle into a GitHub Release
-(`.github/workflows/release.yml`).
+| Trigger | Workflow |
+|---------|----------|
+| Every push | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+| Tag `vX.Y.Z` | [`.github/workflows/release.yml`](.github/workflows/release.yml) — agent binaries + UI bundle |
 
-## REST API
+---
 
-| Method | Path                         | Purpose |
-|--------|------------------------------|---------|
-| GET    | `/api/health`                | liveness |
-| GET    | `/api/nodes`                 | node statuses |
-| POST   | `/api/nodes/{id}/command`    | send an NDJSON command (safety-gated) |
-| GET    | `/api/safety`                | lab mode + allowlist |
-| POST   | `/api/safety/labmode`        | `{"on": true}` |
-| GET    | `/api/events`                | WebSocket: live event stream (browser) |
-| GET    | `/ws/node/{id}`              | WebSocket: node dial-in (ESP32) |
+## Related docs
 
-See [SAFETY.md](SAFETY.md) before enabling Node3.
+| Doc | Contents |
+|-----|----------|
+| [SAFETY.md](SAFETY.md) | Legal / safety gates for Node3 |
+| [firmware/README.md](firmware/README.md) | Toolchain, flash, `.wifi.env`, LED identity |
