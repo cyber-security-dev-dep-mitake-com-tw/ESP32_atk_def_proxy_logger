@@ -118,6 +118,70 @@ See [SAFETY.md](SAFETY.md) before enabling Node3.
 ---
 一套 三節點 ESP32 WiFi 攻防／監控實驗台：板端抓包／偵測／（受限）攻擊，PC 端用 Go agent 匯流，瀏覽器儀表板控制與觀察，Julia 做離線分析。
 
+## 目的
+
+這個專案是一個**教學／實驗用途**的 WiFi 攻防實驗台，目標是在自己的實驗網路裡，
+完整走一遍「監控 → 偵測 → 受控攻擊 → 記錄 → 離線分析」的閉環，讓使用者能：
+
+- 用真實硬體（ESP32-S3）觀察 802.11 封包、頻道、RSSI 等底層資訊，而不只是模擬。
+- 理解 deauthentication 攻擊的原理，同時看到偵測端如何即時發現異常。
+- 練習「安全閘門」設計：攻擊功能預設關閉，且同時受後端 SafetyGate 與韌體端
+  allowlist 雙重限制，只能對自己擁有、明確設定的 BSSID 動作（見 [SAFETY.md](SAFETY.md)）。
+- 累積可回放的資料（PCAP、事件 JSONL），供 Julia 做離線統計與畫圖，而不是只看
+  即時畫面。
+
+**非目的**：這不是一個可以拿去打別人網路的攻擊工具，也不是一個要做成量產產品
+的方案；三個節點刻意保持精簡（單一 SSID／單一 AP／單一攻擊向度），方便學習與
+除錯，而不是覆蓋所有 802.11 攻防情境。
+
+## 三個節點分別能做什麼
+
+- **Node1（封包監控節點）**：把 ESP32-S3 的 WiFi 切到 promiscuous 模式，捕捉所有
+  管理／資料 802.11 訊框，加上 radiotap 標頭後，透過 USB 序列埠即時串流給 PC。
+  PC 端的 Go agent 會把這些訊框寫成標準 PCAP 檔，也能在儀表板上即時顯示頻道、
+  RSSI、封包速率（pps）。它本身**只監聽、不主動發送**，是整個實驗台的「眼睛」。
+  也接受 `set_channel` / `start_hop` 等指令切換或跳頻監控頻道。
+
+- **Node2（deauth 偵測節點）**：以 station 身分連上自己的 AP，同時把射頻切到
+  promiscuous（管理訊框）模式，在 AP 所在頻道上跑一個滑動視窗演算法
+  （`common::detector`），偵測短時間內大量 deauth 訊框的異常模式。一旦超過門檻，
+  就透過 WiFi WebSocket 送出 `deauth_alert` 事件給後端，並在板上用藍色 LED 標示
+  身分。因為跳頻會讓已連線的 WS 斷線，預設**不主動跳頻**，維持在 AP 頻道上待命。
+
+- **Node3（受限攻擊測試節點）**：同樣以 station 身分連上 WiFi、透過 WebSocket 聽
+  後端指令，收到 `attack` 指令時才會組出並發送 802.11 deauth 訊框——但**只能**
+  對編譯時寫死在韌體裡的 `OWN_BSSID` allowlist 目標動作。每一次發送都經過雙重
+  閘門：後端 SafetyGate（lab mode + confirm_own_net + allowlist）先擋一次，韌體
+  自己再擋一次不在允許清單內的 BSSID。板上綠色 LED 常駐心跳、攻擊瞬間閃亮綠燈
+  標示狀態。**預設關閉，需刻意開啟才會作用**（見 [SAFETY.md](SAFETY.md)）。
+
+## backend／analysis 能否部署到節點（Rust／C）上？
+
+簡短結論：**不行，backend（Go）與 analysis（Julia）都無法整包搬到 ESP32 節點上
+執行**，即使改寫成 Rust 或 C 也一樣，原因是它們依賴的是「有作業系統的 PC 環境」，
+而不是 ESP32 這種資源受限的微控制器（MCU）：
+
+- **backend（Go agent）**：依賴 `net/http`、`gorilla/websocket`、`go.bug.st/serial`
+  等套件做 REST/WS 伺服器與序列埠讀寫，`gopacket` 更需要底層 libpcap／檔案系統
+  來寫 PCAP 檔。這些都假設有完整 TCP/IP 協定堆疊、多執行緒排程、檔案系統與相對
+  充裕的記憶體（GB 等級），而 ESP32-S3 只有約 512KB SRAM、無傳統檔案系統、且
+  WiFi/藍牙協定堆疊已經占用大量資源。就算改寫成 Rust 或 C，只要邏輯本質仍是
+  「多節點連線管理 + PCAP 檔案寫入 + REST/WS 伺服器」，就不適合塞進單一顆 MCU
+  去同時服務所有節點——backend 的角色定位就是「PC 端匯流層」。
+
+- **analysis（Julia）**：Julia 是一個帶 JIT 編譯器的完整語言執行環境，啟動即需要
+  數十 MB 起跳的記憶體與磁碟空間，這遠超 ESP32 的能力範圍，無論用什麼語言重寫都
+  一樣——分析所需的統計運算與畫圖，本質上就該放在有檔案系統與較多記憶體的機器
+  上做離線批次處理，而不是即時跑在感測節點上。
+
+- **真正可以搬到節點上的部分**：其實專案已經這樣做了——`firmware/common`
+  這個 Rust crate 就是把「協定解析（802.11／radiotap）」與「deauth 偵測演算法」
+  抽出來、寫成可在 host 上單元測試、也能直接編譯進 ESP-IDF 韌體的共用邏輯，
+  Node2 用的偵測演算法就是這個 crate 的一部分。換句話說：**backend／analysis
+  整體服務搬不上去，但它們裡面「純運算、無 OS 依賴」的邏輯（例如封包解析、
+  簡單的統計視窗判斷）本來就可以、也應該用 Rust 或 C 直接寫進韌體**，讓節點端
+  自己做輕量判斷，PC 端只保留匯流、儲存與離線深度分析的角色。
+
 架構
 ```text
 Node1 (USB serial) ──►┐

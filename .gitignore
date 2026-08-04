@@ -39,6 +39,7 @@ firmware/node2-detector/.wifi.env
 
 # Compose real-backend config
 /.env
+*.env*
 docker-compose.override.yml
 firmware/node3-attacker/.wifi.env.example
 firmware/node3-attacker/.wifi.env.example
